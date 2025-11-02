@@ -1,68 +1,73 @@
 import express from "express";
-import axios from "axios";
-import dotenv from "dotenv";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-dotenv.config();
 const router = express.Router();
 
-// POST: Analyze crop disease
+// ✅ Check API key
+if (!process.env.GEMINI_API_KEY) {
+  console.error("❌ GEMINI_API_KEY not found in environment variables!");
+}
+
+// ✅ Initialize Gemini client (v1 SDK)
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// Use the stable latest model (pro = high accuracy; flash = faster)
+const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+
+
+/**
+ * 🌾 POST /api/agriculture/analyze
+ * Body: { cropType, base64Image }
+ */
 router.post("/analyze", async (req, res) => {
-  const { cropType, base64Image } = req.body;
-
-  if (!base64Image)
-    return res.status(400).json({ error: "Please upload a crop image." });
-
   try {
-    const prompt = `Identify disease or issue in this crop image. Crop Type: ${cropType || "Unknown"}.
-    Suggest remedies and fertilizers.`;
+    const { cropType, base64Image } = req.body;
 
-    const aiResponse = await axios.post(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
-      {
-        contents: [{ parts: [{ text: prompt }] }],
-      },
-      { params: { key: process.env.GEMINI_API_KEY } }
-    );
+    // 🧩 Validate input
+    if (!base64Image || typeof base64Image !== "string") {
+      return res.status(400).json({ error: "Valid Base64 image data is required." });
+    }
 
-    const result =
-      aiResponse.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "No diagnosis found.";
-    res.json({ reply: result });
-  } catch (err) {
-    console.error("Error analyzing crop:", err.message);
-    res.status(500).json({ error: "AI analysis failed." });
-  }
-});
-
-// POST: Farming recommendations
-router.post("/recommendations", async (req, res) => {
-  const { cropType, soilType, season, question } = req.body;
-
-  const prompt = `
-You are an agricultural expert. 
-Provide farming recommendations for:
-Crop: ${cropType || "Not specified"}
-Soil: ${soilType || "Not specified"}
-Season: ${season || "Not specified"}
-Question: ${question || "General advice"}.
+    // 🧠 AI Prompt (Indian Agriculture Focus)
+    const prompt = `
+You are an expert Indian agricultural advisor.
+Analyze the given crop image (type: ${cropType || "Unknown"}).
+Identify possible diseases, pest/insect infestations, or nutrient deficiencies.
+Provide:
+1. Disease or issue name (if detected)
+2. Remedies (organic + chemical options)
+3. Recommended fertilizers or sprays available in India
+4. Preventive care tips to avoid recurrence
+Explain simply, in a way that farmers can understand.
 `;
 
-  try {
-    const aiResponse = await axios.post(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+    // 🖼️ Prepare AI input with image and text
+    const input = [
       {
-        contents: [{ parts: [{ text: prompt }] }],
+        inlineData: {
+          mimeType: "image/jpeg", // works for both JPG and PNG
+          data: base64Image,
+        },
       },
-      { params: { key: process.env.GEMINI_API_KEY } }
-    );
+      { text: prompt },
+    ];
 
-    const reply =
-      aiResponse.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-      "No recommendations found.";
-    res.json({ reply });
+    // 🚀 Generate AI response
+    const result = await model.generateContent(input);
+
+    // 🧾 Safely extract text
+    const aiReply = result?.response?.text?.() || 
+      "Sorry, I couldn’t analyze this image. Please try again with a clearer photo.";
+
+    // ✅ Send response to frontend
+    res.json({ reply: aiReply });
+
   } catch (err) {
-    console.error("Error getting recommendations:", err.message);
-    res.status(500).json({ error: "Failed to get recommendations." });
+    console.error("❌ Image analysis failed:", err.message || err);
+    res.status(500).json({
+      error: "AI crop analysis failed. Check backend logs for details.",
+      details: err.message || err.toString(),
+    });
   }
 });
 

@@ -39,6 +39,7 @@ export default function Agriculture() {
   const [question, setQuestion] = useState("");
   const [recLoading, setRecLoading] = useState(false);
   const [recReply, setRecReply] = useState("");
+  const [recSource, setRecSource] = useState(""); // shows Gemini / OpenAI fallback
 
   // Mandi Prices
   const [selectedState, setSelectedState] = useState(INDIAN_STATES[0]);
@@ -61,7 +62,7 @@ export default function Agriculture() {
 
   // Analyze Crop Image
   const handleAnalyze = async () => {
-    if (!imageBase64) return alert(t("uploadFirst"));
+    if (!imageBase64) return alert(t("uploadFirst") || "Please upload an image first.");
     setLoading(true);
     setResult("");
     try {
@@ -69,34 +70,44 @@ export default function Agriculture() {
         cropType,
         base64Image: imageBase64,
       });
-      setResult(res.data.reply || t("noResponse"));
+      setResult(res.data.reply || t("noResponse") || "No response from AI.");
     } catch (err) {
       console.error("❌ Analyze failed:", err);
-      alert(t("analyzeFailed"));
+      alert(t("analyzeFailed") || "Analyze failed. Check server logs.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Get Recommendations
+  // 🌿 Get Recommendations via /api/askSmart (Gemini + fallback on server)
   const handleGetRecommendations = async (e) => {
     e.preventDefault();
-    if (!cropType && !question) {
-      return alert(t("enterCropOrQuestion"));
-    }
+
+    // Prefer explicit user question, otherwise compose one
+    const userPrompt =
+      question && question.trim().length > 0
+        ? question.trim()
+        : `Suggest suitable farming practices and fertilizer for ${cropType || "the specified crop"} in ${soilType || "the given soil"} during ${season || "the current"} season.`;
+
+    if (!userPrompt) return alert(t("enterCropOrQuestion") || "Please enter a crop or a question.");
+
     setRecLoading(true);
     setRecReply("");
+    setRecSource("");
+
     try {
-      const res = await axios.post("http://localhost:5000/api/agriculture/recommendations", {
-        cropType,
-        soilType,
-        season,
-        question,
+      const res = await axios.post("http://localhost:5000/api/askSmart", {
+        prompt: userPrompt,
       });
-      setRecReply(res.data.reply || t("noRecommendations"));
+
+      // The server returns { source: "Gemini" | "OpenAI", reply: "..." }
+      setRecReply(res?.data?.reply || t("noRecommendations") || "No recommendations found.");
+      setRecSource(res?.data?.source || "Unknown");
     } catch (err) {
       console.error("❌ Recommendation fetch failed:", err);
-      alert(t("recommendationFailed"));
+      // If server responds with JSON error, show it in console and an alert
+      const serverMsg = err.response?.data?.error || err.message;
+      alert(t("recommendationFailed") || `Failed to fetch recommendations: ${serverMsg}`);
     } finally {
       setRecLoading(false);
     }
@@ -104,7 +115,7 @@ export default function Agriculture() {
 
   // 🌾 Get Mandi Prices (Updated with live + fallback)
   const handleGetMandi = async () => {
-    if (!selectedState) return alert(t("Please select a state."));
+    if (!selectedState) return alert(t("Please select a state.") || "Please select a state.");
     setMandiLoading(true);
     setMandiData([]);
     try {
@@ -115,7 +126,7 @@ export default function Agriculture() {
       setMandiSource(res.data.source || "fallback");
     } catch (err) {
       console.error("❌ Mandi fetch failed:", err);
-      alert(t("mandiFailed"));
+      alert(t("mandiFailed") || "Mandi fetch failed. Check server.");
       setMandiSource("fallback");
     } finally {
       setMandiLoading(false);
@@ -283,6 +294,9 @@ export default function Agriculture() {
 
             {recReply && (
               <div className="mt-4 bg-yellow-50 p-4 rounded">
+                <p className="text-sm text-green-700 font-semibold mb-2">
+                  {recSource ? `🌿 Source: ${recSource}` : "🌿 Source: AI"}
+                </p>
                 <pre className="whitespace-pre-wrap">{recReply}</pre>
               </div>
             )}
