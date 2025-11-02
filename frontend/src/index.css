@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+@keyframes gradientFlow {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+body {
+  background: linear-gradient(-45deg, #d1fae5, #a7f3d0, #bfdbfe, #93c5fd);
+  background-size: 400% 400%;
+  animation: gradientFlow 10s ease infinite;
+}
+
+body {
+  @apply font-sans bg-gray-50;
+}
+@keyframes gradient-x {
+  0%, 100% { background-position: left center; }
+  50% { background-position: right center; }
+}
+.animate-gradient-x {
+  background-size: 200% 200%;
+  animation: gradient-x 8s ease infinite;
+}
+@keyframes gradient-smooth {
+  0%, 100% {
+    background-position: left center;
+  }
+  50% {
+    background-position: right center;
+  }
+}
+
+.animate-gradient-smooth {
+  background-size: 200% 200%;
+  animation: gradient-smooth 10s ease infinite;
+}
