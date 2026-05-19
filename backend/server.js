@@ -41,8 +41,7 @@ app.use("/api/askGemini", geminiAI);            // Direct Gemini route
 app.use("/api/products", products);             // Product listing
 app.use("/api/agriculture", agricultureAI);     // ✅ Crop image analyzer
 app.use("/api/agriculture/mandi", mandiAPI);    // Mandi price data
-app.use("/api/health", healthAI);               // Health chatbot
-app.use("/api/health", healthAPI);              // Health info endpoints
+app.use("/api/health", healthAPI);              // ✅ Unified AI-powered Health Assistant
 
 // ✅ Global error handler
 app.use((err, req, res, next) => {

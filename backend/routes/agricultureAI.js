@@ -1,73 +1,56 @@
 import express from "express";
+import dotenv from "dotenv";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+dotenv.config();
+
 const router = express.Router();
-
-// ✅ Check API key
-if (!process.env.GEMINI_API_KEY) {
-  console.error("❌ GEMINI_API_KEY not found in environment variables!");
-}
-
-// ✅ Initialize Gemini client (v1 SDK)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Use the stable latest model (pro = high accuracy; flash = faster)
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
-
-
 /**
- * 🌾 POST /api/agriculture/analyze
- * Body: { cropType, base64Image }
+ * Robust AI generation with automatic retries for 503/Overloaded errors
  */
+async function generateWithRetry(model, content, maxRetries = 2) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+    try {
+      const result = await model.generateContent(content);
+      return result.response.text();
+    } catch (err) {
+      lastError = err;
+      const isRetryable = err.message?.includes("503") || err.message?.includes("Service Unavailable") || err.message?.includes("high demand");
+      if (isRetryable && attempt <= maxRetries) {
+        const delay = attempt * 1000;
+        console.warn(`⚠️ [Agri AI] Model busy, retrying in ${delay}ms (Attempt ${attempt}/${maxRetries})...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
 router.post("/analyze", async (req, res) => {
   try {
     const { cropType, base64Image } = req.body;
+    if (!base64Image) return res.status(400).json({ error: "Image required" });
 
-    // 🧩 Validate input
-    if (!base64Image || typeof base64Image !== "string") {
-      return res.status(400).json({ error: "Valid Base64 image data is required." });
-    }
+    const prompt = `You are an expert agricultural advisor. Analyze this crop image (${cropType || "Unknown"}).
+Give: 1. Disease, 2. Remedy, 3. Fertilizer, 4. Prevention. Use clear headings and emojis.`;
 
-    // 🧠 AI Prompt (Indian Agriculture Focus)
-    const prompt = `
-You are an expert Indian agricultural advisor.
-Analyze the given crop image (type: ${cropType || "Unknown"}).
-Identify possible diseases, pest/insect infestations, or nutrient deficiencies.
-Provide:
-1. Disease or issue name (if detected)
-2. Remedies (organic + chemical options)
-3. Recommended fertilizers or sprays available in India
-4. Preventive care tips to avoid recurrence
-Explain simply, in a way that farmers can understand.
-`;
-
-    // 🖼️ Prepare AI input with image and text
-    const input = [
-      {
-        inlineData: {
-          mimeType: "image/jpeg", // works for both JPG and PNG
-          data: base64Image,
-        },
-      },
+    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+    const content = [
+      { inlineData: { mimeType: "image/jpeg", data: base64Image } },
       { text: prompt },
     ];
 
-    // 🚀 Generate AI response
-    const result = await model.generateContent(input);
+    const reply = await generateWithRetry(model, content);
+    console.log(`🚀 [Agri-v2] Image analyzed successfully via Stable Gemini`);
 
-    // 🧾 Safely extract text
-    const aiReply = result?.response?.text?.() || 
-      "Sorry, I couldn’t analyze this image. Please try again with a clearer photo.";
-
-    // ✅ Send response to frontend
-    res.json({ reply: aiReply });
-
+    return res.json({ reply: reply || "No response", source: "Gemini" });
   } catch (err) {
-    console.error("❌ Image analysis failed:", err.message || err);
-    res.status(500).json({
-      error: "AI crop analysis failed. Check backend logs for details.",
-      details: err.message || err.toString(),
-    });
+    console.error("❌ Agri AI error:", err.message);
+    return res.status(500).json({ error: "AI Analysis failed", details: err.message });
   }
 });
 

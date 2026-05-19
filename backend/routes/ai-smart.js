@@ -16,7 +16,7 @@ router.post("/", async (req, res) => {
     return res.status(400).json({ error: "Prompt is required." });
   }
 
-  console.log("🧠 Received prompt:", prompt);
+  console.log("🧠 [askSmart] Received prompt:", prompt);
 
   // ---- 1️⃣ Try Gemini ----
   try {
@@ -25,7 +25,7 @@ router.post("/", async (req, res) => {
     }
 
     const geminiResponse = await axios.post(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent",
       { contents: [{ parts: [{ text: prompt }] }] },
       {
         headers: { "Content-Type": "application/json" },
@@ -37,10 +37,10 @@ router.post("/", async (req, res) => {
       geminiResponse.data?.candidates?.[0]?.content?.parts?.[0]?.text ||
       "No response from Gemini.";
 
-    console.log("✅ Gemini response received.");
+    console.log("✅ [askSmart] Gemini response received.");
     return res.json({ source: "Gemini", reply: geminiText });
   } catch (geminiError) {
-    console.warn("⚠️ Gemini failed, trying OpenAI...");
+    console.warn("⚠️ [askSmart] Gemini failed, trying OpenAI...");
     console.error("Gemini error:", geminiError.response?.data || geminiError.message);
   }
 
@@ -68,10 +68,10 @@ router.post("/", async (req, res) => {
       openaiResponse.data?.choices?.[0]?.message?.content ||
       "No response from OpenAI.";
 
-    console.log("✅ OpenAI fallback successful.");
+    console.log("✅ [askSmart] OpenAI fallback successful.");
     return res.json({ source: "OpenAI", reply: openaiText });
   } catch (openaiError) {
-    console.error("❌ Both AIs failed:", openaiError.response?.data || openaiError.message);
+    console.error("❌ [askSmart] Both AIs failed:", openaiError.response?.data || openaiError.message);
     return res.status(500).json({ error: "Both Gemini and OpenAI failed." });
   }
 });
